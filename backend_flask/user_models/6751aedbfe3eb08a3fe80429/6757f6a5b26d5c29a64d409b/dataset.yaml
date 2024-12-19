@@ -1,0 +1,8 @@
+names:
+- mask
+- no_mask
+nc: 2
+path: D:/Pribadi/Sidehustle/p24_v2/backend_flask/user_models/6751aedbfe3eb08a3fe80429/6757f6a5b26d5c29a64d409b
+test: D:/Pribadi/Sidehustle/p24_v2/backend_flask/user_models/6751aedbfe3eb08a3fe80429/6757f6a5b26d5c29a64d409b\test/images
+train: D:/Pribadi/Sidehustle/p24_v2/backend_flask/user_models/6751aedbfe3eb08a3fe80429/6757f6a5b26d5c29a64d409b\train/images
+val: D:/Pribadi/Sidehustle/p24_v2/backend_flask/user_models/6751aedbfe3eb08a3fe80429/6757f6a5b26d5c29a64d409b\valid/images

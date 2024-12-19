@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}Image Details - ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">Image Details</h2>
+        <div class="card">
+            <img src="{{ image.url }}" class="card-img-top" alt="{{ image.name }}">
+            <div class="card-body">
+                <h5 class="card-title">{{ image.name }}</h5>
+                <p class="card-text">Uploaded on: {{ image.uploaded_at }}</p>
+                <p class="card-text">Image ID: {{ image.id }}</p>
+                <a href="{{ image.url }}" class="btn btn-primary" download>Download Image</a>
+                <a href="{% url 'image_list' %}" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

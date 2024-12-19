@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="text-center">Register</h2>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" id="registerForm">
+                            {% csrf_token %}
+                            
+                            {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {{ form.non_field_errors }}
+                            </div>
+                            {% endif %}
+
+                            <div class="form-group mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                    <div class="text-danger">
+                                        {{ form.username.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="form-group mb-3">
+                                <label for="{{ form.password1.id_for_label }}" class="form-label">Password</label>
+                                {{ form.password1 }}
+                                {% if form.password1.errors %}
+                                    <div class="text-danger">
+                                        {{ form.password1.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="form-group mb-3">
+                                <label for="{{ form.password2.id_for_label }}" class="form-label">Confirm Password</label>
+                                {{ form.password2 }}
+                                {% if form.password2.errors %}
+                                    <div class="text-danger">
+                                        {{ form.password2.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Register</button>
+                            </div>
+                        </form>
+
+                        <div class="text-center mt-3">
+                            <p>Already have an account? <a href="{% url 'login' %}">Login here</a></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const registerForm = document.getElementById('registerForm');
+    
+    registerForm.addEventListener('submit', function(event) {
+        const username = document.getElementById('id_username');
+        const password1 = document.getElementById('id_password1');
+        const password2 = document.getElementById('id_password2');
+        
+        // Additional client-side validations
+        if (username.value.trim() === '') {
+            event.preventDefault();
+            alert('Username cannot be empty');
+            return;
+        }
+        
+        if (password1.value !== password2.value) {
+            event.preventDefault();
+            alert('Passwords do not match');
+            return;
+        }
+        
+        // Check password complexity (example)
+        if (password1.value.length < 8) {
+            event.preventDefault();
+            alert('Password must be at least 8 characters long');
+            return;
+        }
+    });
+});
+</script>
+{% endblock %}

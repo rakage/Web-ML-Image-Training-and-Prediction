@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+
+{% block title %}Folder Details - ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+  <h1 class="text-3xl font-bold mb-8 text-center text-gray-800">{{ folder.folder_name }}</h1>
+
+  <div class="mb-8 text-center">
+    <p class="text-lg text-gray-600">Created on: {{ folder.created_at }}</p>
+    <p class="text-lg text-gray-600 image-count-display">Images Count: {{ folder.image_count }}</p>
+  </div>
+
+  <!-- Image List -->
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="image-container">
+    <!-- Images will be loaded here dynamically -->
+  </div>
+
+  <!-- No images message -->
+  {% if folder.images|length == 0 %}
+    <div class="text-center text-gray-500 mt-12">
+      <p class="h4 mb-4">No images found in this folder.</p>
+      <a href="{% url 'upload' %}" class="btn btn-primary">
+        Upload an Image
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Pass the necessary data from Jinja to JavaScript -->
+<script>
+    // Global variables
+    let authToken = '';
+    const folderId = "{{ folder.folder_id }}";  // Pass the folder ID from the server
+
+    // Global function to remove image from folder
+    function removeImageFromFolder(imageId) {
+        const confirmation = confirm("Are you sure you want to remove this image from the folder?");
+        if (!confirmation) return;
+
+        fetch(`http://127.0.0.1:5000/folder/${folderId}/remove-image`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ image_id: imageId })
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errorData => {
+                    throw new Error(errorData.msg || 'Failed to remove image from folder');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Find and remove the image card
+            const imageCard = document.querySelector(`[data-image-id="${imageId}"]`);
+            if (imageCard) {
+                imageCard.classList.add('animate__animated', 'animate__fadeOutUp');
+                setTimeout(() => {
+                    imageCard.remove();
+                    
+                    // Update image count
+                    const imageCountElement = document.querySelector('.image-count-display');
+                    if (imageCountElement) {
+                        const currentCount = parseInt(imageCountElement.textContent.split(': ')[1]);
+                        imageCountElement.textContent = `Images Count: ${currentCount - 1}`;
+                    }
+                    
+                    // Show success toast
+                    const toast = document.createElement('div');
+                    toast.className = 'toast show align-items-center text-white bg-success border-0 position-fixed bottom-0 end-0 p-3 m-3';
+                    toast.textContent = 'Image removed from folder successfully!';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                }, 500);
+            }
+        })
+        .catch(error => {
+            console.error('Error removing image from folder:', error);
+            alert(error.message || "An error occurred while removing the image from the folder.");
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        authToken = "{{ auth_token }}";  // Get the JWT token passed from Django view
+        const folderImages = {% if folder.images %}{{ folder.images|safe }}{% else %}[]{% endif %}; // Safely pass folder images as JSON
+
+        // Ensure that folderImages is an array before calling forEach
+        if (!Array.isArray(folderImages)) {
+            console.error('Expected folderImages to be an array, but got:', folderImages);
+            return;
+        }
+
+        if (!authToken) {
+            alert('Authorization token is missing. Please login first.');
+            return;
+        }
+
+        // Function to fetch and display the image data dynamically
+        function fetchImage(imageUrl, token, imageElementId) {
+            fetch(imageUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.blob())
+            .then(imageBlob => {
+                const imgElement = document.querySelector(imageElementId);
+                imgElement.src = URL.createObjectURL(imageBlob);
+            })
+            .catch(error => {
+                console.error('Error loading image:', error);
+            });
+        }
+
+        // Loop through the images and create image cards dynamically
+        const imageContainer = document.getElementById('image-container');
+        if (folderImages.length === 0) {
+            imageContainer.innerHTML = `
+                <div class="col text-center">
+                    <div class="alert alert-info" role="alert">
+                        <span class="d-block d-sm-inline">No images uploaded yet.</span>
+                        <a href="{% url 'upload' %}" class="btn btn-primary ms-2">Upload an Image</a>
+                    </div>
+                </div>
+            `;
+        } else {
+            folderImages.forEach(image => {
+                const imageCard = `
+                    <div class="col" data-image-id="${image.image_id}">
+                        <div class="card h-100 shadow-sm hover-effect">
+                            <img id="image-${image.image_id}" class="card-img-top object-cover" alt="${image.filename}" loading="lazy" />
+                            <div class="card-body">
+                                <h5 class="card-title text-truncate">${image.filename}</h5>
+                                <p class="card-text text-muted">Uploaded on: ${new Date(image.upload_date).toLocaleDateString()}</p>
+                                <div class="d-flex justify-content-end">
+                                    <button onclick="removeImageFromFolder('${image.image_id}')" class="btn btn-danger">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                imageContainer.innerHTML += imageCard;
+
+                // Fetch the image data and set it as the src for the <img> tag
+                fetchImage(`http://127.0.0.1:5000${image.image_url}`, authToken, `#image-${image.image_id}`);
+            });
+        }
+    });
+</script>
+{% endblock %}

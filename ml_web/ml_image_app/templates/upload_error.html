@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Failed - ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-danger">
+            <h4 class="alert-heading">Error!</h4>
+            <p>An error occurred during image upload:</p>
+            <p>{{ error }}</p>
+            <a href="{% url 'upload' %}" class="btn btn-primary">Try Again</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

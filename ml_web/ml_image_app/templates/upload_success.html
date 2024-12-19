@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Successful - ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-success">
+            <h4 class="alert-heading">Success!</h4>
+            <p>Image uploaded successfully.</p>
+            <p>Image ID: {{ image_id }}</p>
+            <p>{{ message }}</p>
+            <a href="{% url 'image_list' %}" class="btn btn-primary">View Uploaded Images</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

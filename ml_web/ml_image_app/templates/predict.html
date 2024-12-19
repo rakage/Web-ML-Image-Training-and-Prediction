@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Images - ML Image Annotation{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+    .img-thumbnail {
+        max-height: 300px;
+        object-fit: contain;
+    }
+    #predictions-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <form id="prediction-form" method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="row">
+            <!-- First Column: Input Image -->
+            <div class="col-md-4 text-center">
+                <h4>Input Image</h4>
+                <img id="image-preview" 
+                     src="https://via.placeholder.com/300" 
+                     alt="Image Preview" 
+                     class="img-fluid img-thumbnail mb-3" 
+                     style="max-height: 300px;">
+                
+                <input type="file" 
+                       name="image" 
+                       accept="image/*" 
+                       class="form-control mb-3" 
+                       required>
+            </div>
+            
+            <!-- Second Column: Model Selection -->
+            <div class="col-md-4 text-center">
+                <h4>Choose Model</h4>
+                <select name="model" class="form-control mb-3" required>
+                    {% for model in model_options %}
+                    <option value="{{ model }}">{{ model|title }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-block" id="predict-button">
+                    Predict
+                </button>
+            </div>
+            
+            <!-- Third Column: Prediction Output -->
+            <div class="col-md-4 text-center">
+                <h4>Prediction Output</h4>
+                <!-- Predicted image preview -->
+                <img id="prediction-image" 
+                     src="{{ predicted_image|default:'https://via.placeholder.com/300' }}"
+                     alt="Predicted Image" 
+                     class="img-fluid img-thumbnail mb-3" 
+                     style="max-height: 300px;">
+                
+                <!-- Predictions list -->
+                <ul id="predictions-list" class="list-group">
+                    {% if predictions %}
+                        {% for prediction in predictions %}
+                        <li class="list-group-item">
+                            <strong>{{ prediction.label }}</strong>: 
+                            {{ prediction.score|floatformat:2 }}%
+                            {% if prediction.box %}
+                            <br>Box: {{ prediction.box }}
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    {% endif %}
+                </ul>
+
+                {% if error %}
+                <div class="alert alert-danger mt-3">
+                    {{ error }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const imageInput = document.querySelector('input[name="image"]');
+    const imagePreview = document.getElementById('image-preview');  // Image preview element
+    const form = document.getElementById('prediction-form');
+    const predictButton = document.getElementById('predict-button');
+
+    // Show loading state on Predict button when form is submitted
+    form.addEventListener('submit', function() {
+        predictButton.disabled = true;
+        predictButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Predicting...';
+    });
+
+    // Image preview functionality
+    imageInput.addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        
+        if (!file) {
+            // No file selected
+            imagePreview.src = 'https://via.placeholder.com/300';
+            return;
+        }
+        
+        // Validate file type
+        const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
+        if (!validImageTypes.includes(file.type)) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid File Type',
+                text: 'Please select a valid image file (JPEG, PNG, or GIF).',
+            });
+            imageInput.value = ''; // Clear the input
+            imagePreview.src = 'https://via.placeholder.com/300';
+            return;
+        }
+
+        // Validate file size (e.g., max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            Swal.fire({
+                icon: 'error',
+                title: 'File Too Large',
+                text: 'File is too large. Maximum size is 5MB.',
+            });
+            imageInput.value = ''; // Clear the input
+            imagePreview.src = 'https://via.placeholder.com/300';
+            return;
+        }
+
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            imagePreview.src = e.target.result;
+            imagePreview.style.display = 'block'; 
+        };
+        
+        reader.onerror = function() {
+            console.error('Error reading file');
+            Swal.fire({
+                icon: 'error',
+                title: 'File Read Error',
+                text: 'There was an error reading the file.',
+            });
+            imagePreview.src = 'https://via.placeholder.com/300';
+        };
+        
+        // Read the file once
+        reader.readAsDataURL(file);
+    });
+});
+</script>
+{% endblock %}

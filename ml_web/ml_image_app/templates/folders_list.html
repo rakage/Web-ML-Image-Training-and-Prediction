@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}Folder List - ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold mb-8 text-center">Your Folders</h1>
+  
+  <!-- Folder List -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for folder in folders %}
+      <div class="card border rounded-lg p-4">
+        <h2 class="text-xl font-semibold mb-2">
+          <a href="{{ folder.folder_url }}" class="text-blue-500 hover:underline">{{ folder.folder_name }}</a>
+        </h2>
+        <p class="text-sm text-gray-500">Created on: {{ folder.created_at }}</p>
+        <p class="text-sm text-gray-500">Images: {{ folder.image_count }}</p>
+      </div>
+    {% endfor %}
+  </div>
+  
+  <!-- No folders message -->
+  {% if folders|length == 0 %}
+    <div class="text-center text-gray-500">
+      <p>You have no folders yet. Start creating folders to organize your images!</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

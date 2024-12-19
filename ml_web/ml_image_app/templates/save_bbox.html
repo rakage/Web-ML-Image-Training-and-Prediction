@@ -1,0 +1,425 @@
+{% extends 'base.html' %}
+{% block title %}ML Image Annotation{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-3 border-end">
+            <h4 class="mb-3">Select Folder</h4>
+            <select id="folderSelect" class="form-select mb-4">
+                <option value="">-- Select Folder --</option>
+                {% for f in folder %}
+                <option value="{{ f.folder_id }}">{{ f.folder_name }}</option>
+                {% endfor %}
+            </select>
+
+            <h4 class="mb-3">Select Image</h4>
+            <select id="imageSelect" class="form-select mb-3">
+                <option value="">-- Select Image --</option>
+            </select>
+            <div class="text-center">
+                <img id="previewImage" src="" alt="Selected image preview" class="img-fluid rounded border d-none mt-3" />
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-9">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <button id="prevImageBtn" class="btn btn-outline-secondary btn-sm me-2">Previous Image</button>
+                    <button id="nextImageBtn" class="btn btn-outline-secondary btn-sm">Next Image</button>
+                </div>
+                <button id="saveBboxesBtn" class="btn btn-primary btn-sm">Save Bounding Boxes</button>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <strong>Annotation Area</strong>
+                </div>
+                <div class="card-body position-relative">
+                    <div id="imageWrapper" class="position-relative d-inline-block">
+                        <img id="annotatedImage" src="" alt="annotation target" class="img-fluid border"/>
+                        <canvas id="annotationCanvas" class="annotation-canvas" 
+                                style="position:absolute; top:0; left:0;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bounding-box-info mt-4">
+                <h5>Bounding Boxes:</h5>
+                <ul id="bboxList" class="list-group list-group-flush"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const djangoSaveBboxesUrl = "{% url 'save_bbox' %}";
+    const jwtToken = "{{ auth_token }}";
+    const FLASK_API_URL = "{{ FLASK_API_URL|default:'http://localhost:5000' }}";
+    
+    // State
+    let images = [];
+    let currentIndex = 0;
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+    let endX = 0;
+    let endY = 0;
+    let boundingBoxes = [];
+    
+    const annotatedImage = document.getElementById('annotatedImage');
+    const annotationCanvas = document.getElementById('annotationCanvas');
+    const bboxList = document.getElementById('bboxList');
+    const prevImageBtn = document.getElementById('prevImageBtn');
+    const nextImageBtn = document.getElementById('nextImageBtn');
+    const saveBboxesBtn = document.getElementById('saveBboxesBtn');
+    const folderSelect = document.getElementById('folderSelect');
+    const imageSelect = document.getElementById('imageSelect');
+    const previewImage = document.getElementById('previewImage');
+    
+    const ctx = annotationCanvas.getContext('2d');
+    
+    document.addEventListener('DOMContentLoaded', function () {
+        // When folder changes, fetch images for that folder
+        folderSelect.addEventListener('change', async () => {
+            const folderId = folderSelect.value;
+            images = [];
+            currentIndex = 0;
+            if (folderId) {
+                try {
+                    const resp = await fetch(`${FLASK_API_URL}/folder/${folderId}`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${jwtToken}`
+                        }
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        images = data.images || [];
+                        populateImageSelect(images);
+                    } else {
+                        console.error('Error fetching folder images:', await resp.text());
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            } else {
+                // Clear images if no folder selected
+                imageSelect.innerHTML = '<option value="">-- Select Image --</option>';
+                previewImage.classList.add('d-none');
+                annotatedImage.src = 'https://via.placeholder.com/800x600.png?text=Select+an+image';
+                ctx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+            }
+        });
+    
+        // When image changes, load that image for preview and annotation
+        imageSelect.addEventListener('change', async () => {
+            const imageId = imageSelect.value;
+            const selectedImage = images.find(img => img.image_id === imageId);
+            if (selectedImage) {
+                try {
+                    const resp = await fetch(`${FLASK_API_URL}/image/${imageId}`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${jwtToken}`
+                        }
+                    });
+    
+                    if (!resp.ok) {
+                        console.error('Error fetching image:', await resp.text());
+                        return;
+                    }
+    
+                    const blob = await resp.blob();
+                    const objectURL = URL.createObjectURL(blob);
+                    
+                    previewImage.src = objectURL;
+                    previewImage.classList.remove('d-none');
+    
+                } catch (error) {
+                    console.error('Network or server error:', error);
+                }
+                loadImage(FLASK_API_URL + selectedImage.image_url);
+            } else {
+                previewImage.classList.add('d-none');
+                annotatedImage.src = 'https://via.placeholder.com/800x600.png?text=Select+an+image';
+                ctx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+            }
+        });
+    });
+    
+    function populateImageSelect(images) {
+        imageSelect.innerHTML = '<option value="">-- Select Image --</option>';
+        images.forEach(img => {
+            const option = document.createElement('option');
+            option.value = img.image_id;
+            option.textContent = img.filename;
+            imageSelect.appendChild(option);
+        });
+    }
+    
+    async function loadImage(url) {
+        // Reset bounding boxes when loading a new image
+        boundingBoxes = [];
+        
+        try {
+            const resp = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`
+                }
+            });
+
+            if (!resp.ok) {
+                console.error('Error fetching image:', await resp.text());
+                return;
+            }
+
+            const blob = await resp.blob();
+            const objectURL = URL.createObjectURL(blob);
+            annotatedImage.src = objectURL;
+
+            annotatedImage.onload = async () => {
+                annotationCanvas.width = annotatedImage.width;
+                annotationCanvas.height = annotatedImage.height;
+                ctx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+
+                // Clear the bounding box list
+                bboxList.innerHTML = '';
+
+                // Fetch existing bounding boxes for this image
+                await fetchExistingBoundingBoxes();
+            };
+        } catch (error) {
+            console.error('Network or server error:', error);
+        }
+    }
+    
+    async function fetchExistingBoundingBoxes() {
+        const imageId = imageSelect.value;
+        
+        if (!imageId) return;
+
+        try {
+            const response = await fetch(`${FLASK_API_URL}/save-bboxes?image_id=${imageId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                
+                if (data.bboxes && data.bboxes.length > 0) {
+                    boundingBoxes = data.bboxes;
+                    updateBboxList();
+                    drawExistingBoundingBoxes();
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching existing bounding boxes:', error);
+        }
+    }
+    
+    function drawExistingBoundingBoxes() {
+        boundingBoxes.forEach(box => {
+            drawBox(box.x, box.y, box.width, box.height, 'green', box.name);
+        });
+    }
+    
+    annotationCanvas.addEventListener('mousedown', (e) => {
+        isDrawing = true;
+        const rect = annotationCanvas.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+    });
+    
+    annotationCanvas.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const rect = annotationCanvas.getBoundingClientRect();
+        endX = e.clientX - rect.left;
+        endY = e.clientY - rect.top;
+        draw();
+    });
+    
+    annotationCanvas.addEventListener('mouseup', () => {
+        if (isDrawing) {
+            const name = prompt('Enter a name for this bounding box:');
+            isDrawing = false;
+            boundingBoxes.push({
+                x: Math.min(startX, endX),
+                y: Math.min(startY, endY),
+                width: Math.abs(endX - startX),
+                height: Math.abs(endY - startY),
+                name: name || `Box ${boundingBoxes.length + 1}` // Default name if not provided
+            });
+            updateBboxList();
+        }
+    });
+    
+    function draw() {
+        ctx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+        // Redraw existing boxes
+        boundingBoxes.forEach(box => {
+            drawBox(box.x, box.y, box.width, box.height, 'green');
+        });
+    
+        // Draw current box if drawing
+        if (isDrawing) {
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX);
+            const h = Math.abs(endY - startY);
+            drawBox(x, y, w, h, 'blue');
+        }
+    }
+    
+    function drawBox(x, y, w, h, color, name) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+
+        // If a name is provided, draw it on the box
+        if (name) {
+            ctx.fillStyle = color;
+            ctx.font = '12px Arial';
+            ctx.fillText(name, x, y - 5);
+        }
+    }
+    
+    function updateBboxList() {
+        bboxList.innerHTML = '';
+        boundingBoxes.forEach((box, i) => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            li.textContent = `${box.name}: x=${box.x.toFixed(2)}, y=${box.y.toFixed(2)}, w=${box.width.toFixed(2)}, h=${box.height.toFixed(2)}`;
+            
+            // Add delete button for each bounding box
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.className = 'btn btn-danger btn-sm float-end';
+            deleteBtn.addEventListener('click', async () => {
+                boundingBoxes.splice(i, 1);
+                updateBboxList();
+                draw();
+
+                // If all bounding boxes are deleted, send a DELETE request to the server
+                if (boundingBoxes.length === 0) {
+                    const imageId = imageSelect.value;
+                    if (!imageId) {
+                        console.error('No image selected');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`${FLASK_API_URL}/save-bboxes`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${jwtToken}`
+                            },
+                            body: JSON.stringify({ image_id: imageId })
+                        });
+
+                        if (response.ok) {
+                            console.log('Bounding boxes deleted successfully');
+                        } else {
+                            const errorMsg = await response.text();
+                            console.error('Error deleting bounding boxes:', errorMsg);
+                        }
+                    } catch (error) {
+                        console.error('Network or server error:', error);
+                    }
+                }
+            });
+            
+            li.appendChild(deleteBtn);
+            bboxList.appendChild(li);
+        });
+    }
+    
+    // Navigation between images
+    prevImageBtn.addEventListener('click', () => {
+        if (currentIndex > 0) {
+            currentIndex--;
+            loadSelectedImage();
+        }
+    });
+    
+    nextImageBtn.addEventListener('click', () => {
+        if (currentIndex < images.length - 1) {
+            currentIndex++;
+            loadSelectedImage();
+        }
+    });
+    
+    async function loadSelectedImage() {
+        const selectedImage = images[currentIndex];
+        try {
+            const resp = await fetch(`${FLASK_API_URL}/image/${selectedImage.image_id}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${jwtToken}`
+                }
+            });
+
+            if (!resp.ok) {
+                console.error('Error fetching image:', await resp.text());
+                return;
+            }
+
+            const blob = await resp.blob();
+            const objectURL = URL.createObjectURL(blob);
+
+            previewImage.src = objectURL;
+            imageSelect.value = selectedImage.image_id;
+
+            previewImage.classList.remove('d-none');
+            loadImage(FLASK_API_URL + selectedImage.image_url);
+
+        } catch (error) {
+            console.error('Network or server error:', error);
+        }
+    }
+    
+    // Save bounding boxes by POSTing to Django endpoint
+    saveBboxesBtn.addEventListener('click', async () => {
+        const imageId = imageSelect.value;
+        if (!imageId) {
+            alert('No image selected.');
+            return;
+        }
+        const payload = {
+            image_id: imageId,
+            bboxes: boundingBoxes
+        };
+    
+        const response = await fetch(djangoSaveBboxesUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + jwtToken,
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(payload)
+        });
+    
+        if (response.ok) {
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert('Bounding boxes saved successfully!');
+            } else {
+                alert('Error saving bounding boxes: ' + result.message);
+            }
+        } else {
+            const msg = await response.text();
+            alert('Error saving bounding boxes: ' + msg);
+        }
+    });
+    </script>
+{% endblock %}

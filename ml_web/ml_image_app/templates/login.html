@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="text-center">Login</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="loginForm" method="post">
+                            {% csrf_token %}
+                            
+                            {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {{ form.non_field_errors }}
+                            </div>
+                            {% endif %}
+
+                            <div class="form-group mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                    <div class="text-danger">
+                                        {{ form.username.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="form-group mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
+                                {{ form.password }}
+                                {% if form.password.errors %}
+                                    <div class="text-danger">
+                                        {{ form.password.errors }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            {% if error_message %}
+                            <div class="alert alert-danger">
+                                {{ error_message }}
+                            </div>
+                            {% endif %}
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Login</button>
+                            </div>
+                        </form>
+
+                        <div class="text-center mt-3">
+                            <p>Don't have an account? <a href="{% url 'register' %}">Register here</a></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    
+    loginForm.addEventListener('submit', function(event) {
+        // Form validation is now handled by Django's AuthenticationForm
+        // The form will only submit if Django's form validation passes
+        
+        // You can add any additional client-side validations here if needed
+        const username = document.getElementById('id_username');
+        const password = document.getElementById('id_password');
+
+        if (username.value.trim() === '' || password.value.trim() === '') {
+            event.preventDefault();
+            alert('Please enter both username and password');
+        }
+    });
+});
+</script>
+{% endblock %}

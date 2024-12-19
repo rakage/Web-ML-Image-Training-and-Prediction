@@ -1,0 +1,321 @@
+{% extends 'base.html' %}
+{% block title %}Upload Images - ML Image Annotation{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <!-- Tabs for Upload Type Selection -->
+        <div class="col-md-10 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="text-center mb-4">Image Upload</h3>
+                    <!-- Nav tabs -->
+                <ul class="nav nav-tabs" id="uploadTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link active" id="bulk-upload-tab" data-bs-toggle="tab" href="#bulk-upload" role="tab" aria-controls="bulk-upload" aria-selected="true">Bulk Upload</a>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link" id="webcam-upload-tab" data-bs-toggle="tab" href="#webcam-upload" role="tab" aria-controls="webcam-upload" aria-selected="false">Webcam Upload</a>
+                    </li>
+                </ul>
+                
+                <!-- Tab content -->
+                <div class="tab-content mt-3" id="uploadTabsContent">
+                    <!-- Bulk Upload Tab -->
+                    <div class="tab-pane fade show active" id="bulk-upload" role="tabpanel" aria-labelledby="bulk-upload-tab">
+                        <form id="bulk-upload-form" method="post" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <!-- Folder Selection Dropdown -->
+                            <div class="mb-3">
+                                <label for="bulk-folder-select" class="form-label">Select Destination Folder</label>
+                                <select id="bulk-folder-select" class="form-control" required>
+                                    <option value="" disabled selected>Choose a folder</option>
+                                    <!-- Folders will be dynamically populated -->
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="id_images" class="form-label">Choose Images (Multiple Selection Allowed)</label>
+                                <input type="file" name="images" id="id_images" 
+                                       class="form-control" 
+                                       multiple 
+                                       accept="image/jpeg,image/png,image/gif,image/bmp,image/webp">
+                                {% if form.images.errors %}
+                                    <div class="text-danger">
+                                        {% for error in form.images.errors %}
+                                            <p>{{ error }}</p>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Image Preview Container -->
+                            <div id="image-preview-container" class="row g-3 mb-3" style="display:none;">
+                                <!-- Preview images will be dynamically added here -->
+                            </div>
+                            
+                            <div class="text-center">
+                                <button type="submit" class="btn btn-primary btn-lg w-100">Upload Images</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Webcam Upload Tab -->
+                    <div class="tab-pane fade" id="webcam-upload" role="tabpanel" aria-labelledby="webcam-upload-tab">
+                        <!-- Folder Selection Dropdown -->
+                        <div class="mb-3">
+                            <label for="webcam-folder-select" class="form-label">Select Destination Folder</label>
+                            <select id="webcam-folder-select" class="form-control" required>
+                                <option value="" disabled selected>Choose a folder</option>
+                                <!-- Folders will be dynamically populated -->
+                            </select>
+                        </div>
+
+                        <div class="text-center">
+                            <video id="webcam" width="100%" height="auto" autoplay></video>
+                            <br><br>
+                            <button id="capture-btn" class="btn btn-success">Capture Image</button>
+                        </div>
+                        <div class="mt-3 text-center" id="webcam-preview" style="display:none;">
+                            <h5>Captured Image:</h5>
+                            <img id="captured-image" src="" class="img-fluid" alt="Captured Image" style="max-width: 100%;">
+                            <br><br>
+                            <button id="upload-webcam-btn" class="btn btn-primary">Upload Captured Image</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const imageInput = document.getElementById('id_images');
+    const previewContainer = document.getElementById('image-preview-container');
+    const webcam = document.getElementById('webcam');
+    const captureBtn = document.getElementById('capture-btn');
+    const webcamPreview = document.getElementById('webcam-preview');
+    const capturedImage = document.getElementById('captured-image');
+    const uploadWebcamBtn = document.getElementById('upload-webcam-btn');
+    const bulkFolderSelect = document.getElementById('bulk-folder-select');
+    const webcamFolderSelect = document.getElementById('webcam-folder-select');
+    let webcamStream = null;
+
+    // Fetch folders from the backend
+    function fetchFolders() {
+        const authToken = "{{ auth_token }}";
+        if (!authToken) {
+            alert('Authorization token is missing. Please login first.');
+            return;
+        }
+
+        fetch('http://127.0.0.1:5000/folders', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch folders');
+            }
+            return response.json();
+        })
+        .then(folders => {
+            // Populate bulk upload folder select
+            bulkFolderSelect.innerHTML = '<option value="" disabled selected>Choose a folder</option>';
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder.folder_id;
+                option.textContent = folder.folder_name;
+                bulkFolderSelect.appendChild(option);
+            });
+
+            // Populate webcam upload folder select
+            webcamFolderSelect.innerHTML = '<option value="" disabled selected>Choose a folder</option>';
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder.id;
+                option.textContent = folder.name;
+                webcamFolderSelect.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching folders:', error);
+            alert('Failed to load folders. Please refresh the page.');
+        });
+    }
+
+    // Call fetchFolders when the page loads
+    fetchFolders();
+
+    // Bulk image upload preview
+    imageInput.addEventListener('change', function(event) {
+        previewContainer.innerHTML = '';
+        
+        if (this.files.length > 0) {
+            previewContainer.style.display = 'flex';
+        } else {
+            previewContainer.style.display = 'none';
+            return;
+        }
+
+        Array.from(this.files).forEach(file => {
+            const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+            if (!validImageTypes.includes(file.type)) {
+                alert(`Invalid file type for ${file.name}. Only image files are allowed.`);
+                return;
+            }
+
+            if (file.size > 42 * 1024 * 1024) {
+                alert(`${file.name} exceeds the maximum file size of 42 megabytes.`);
+                return;
+            }
+
+            const previewCol = document.createElement('div');
+            previewCol.className = 'col-md-3 col-sm-4 col-6';
+            const previewCard = document.createElement('div');
+            previewCard.className = 'card h-100';
+            const previewImg = document.createElement('img');
+            previewImg.className = 'card-img-top';
+            previewImg.style.objectFit = 'cover';
+            previewImg.style.height = '200px';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            const previewBody = document.createElement('div');
+            previewBody.className = 'card-body';
+            const previewTitle = document.createElement('h5');
+            previewTitle.className = 'card-title text-truncate';
+            previewTitle.textContent = file.name;
+            const previewText = document.createElement('p');
+            previewText.className = 'card-text';
+            previewText.textContent = `${Math.round(file.size / 1024)} KB`;
+
+            previewBody.appendChild(previewTitle);
+            previewBody.appendChild(previewText);
+            previewCard.appendChild(previewImg);
+            previewCard.appendChild(previewBody);
+            previewCol.appendChild(previewCard);
+            previewContainer.appendChild(previewCol);
+        });
+    });
+
+    // Bulk upload form submission
+    document.getElementById('bulk-upload-form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        
+        const selectedFolder = bulkFolderSelect.value;
+        if (!selectedFolder) {
+            alert('Please select a destination folder');
+            return;
+        }
+
+        const formData = new FormData(this);
+        formData.append('folder_id', selectedFolder);
+
+        fetch("{% url 'upload' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to upload images');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                // alert('Images uploaded successfully!');
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to upload images');
+        });
+    });
+
+    // Webcam image capture setup
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                webcamStream = stream;
+                webcam.srcObject = stream;
+            })
+            .catch(function(err) {
+                alert("Error accessing webcam: " + err);
+            });
+    }
+
+    // Capture image from webcam
+    captureBtn.addEventListener('click', function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = webcam.videoWidth;
+        canvas.height = webcam.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        capturedImage.src = dataUrl;
+        webcamPreview.style.display = 'block';
+        captureBtn.style.display = 'none'; // Hide capture button after capturing image
+    });
+
+    // Upload captured webcam image
+    uploadWebcamBtn.addEventListener('click', function() {
+        const selectedFolder = webcamFolderSelect.value;
+        if (!selectedFolder) {
+            alert('Please select a destination folder');
+            return;
+        }
+
+        const dataUrl = capturedImage.src;
+
+        // Send base64 image data to Django backend via AJAX
+        const formData = new FormData();
+        formData.append('webcam_image', dataUrl);  // The field name must match the Django view
+        formData.append('folder_id', selectedFolder);
+
+        fetch("{% url 'upload' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => {
+            // Check if the response is successful (status code 200)
+            if (!response.ok) {
+                throw new Error('Failed to upload image');
+            }
+            return response.json();  // Parse the response as JSON
+        })
+        .then(data => {
+            // Handle the JSON response from the backend
+            if (data.status === 'success') {
+                alert('Image uploaded successfully!');
+                window.location.reload();  // Optionally reload or handle success
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to upload image');
+        });
+    });
+});
+</script>
+{% endblock %}
