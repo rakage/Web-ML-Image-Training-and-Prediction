@@ -706,10 +706,6 @@ def predict():
         img_base64 = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
 
         response["image"] = img_base64
-        # probs_serializable = [p.tolist() for p in probs]
-        # response["box"] = kotak
-        # response["predictions"] = probs_serializable
-
         response["predictions"] = predictions
 
     return jsonify(response)
