@@ -443,10 +443,68 @@ def folder_detail_view(request, folder_id):
 # Model training view
 @login_required
 def train_model_view(request):
+    auth_backend = FlaskAuthBackend()
+    jwt_token = auth_backend.get_access_token(request.user)
+
+    endpoint_folders = 'http://127.0.0.1:5000/folders'
+    headers = {
+        'Authorization': f'Bearer {jwt_token}'
+    }
+
+    try:
+        response = requests.get(endpoint_folders, headers=headers)
+        
+        if response.status_code == 200:
+            folders = response.json()
+        else:
+            return render(request, 'error.html', {
+                'error': response.text
+            })
+        
+    except requests.RequestException as e:
+        return render(request, 'error.html', {
+            'error': str(e)
+        })
+    
+    context = {
+        'folders': folders,
+        'models': ['YoloV8'],
+        'auth_token': jwt_token
+    }
+
     if request.method == 'POST':
-        retrain_model.apply_async()
-        return redirect('home')
-    return render(request, 'model_training.html')
+        project_name = request.POST.get('project_name')
+        selected_folder = request.POST.get('folder')
+        selected_model = request.POST.get('model')
+        epochs = request.POST.get('epochs')
+        batch_size = request.POST.get('batch_size')
+
+        if not project_name or not selected_folder or not selected_model or not epochs or not batch_size:
+            context['error'] = 'Please fill all required fields.'
+            return render(request, 'model_training.html', context)
+        
+        try:
+            # Send the training request to the Flask API
+            endpoint_train = 'http://127.0.0.1:5000/train'
+            payload = {
+                'project_name': project_name,
+                'folder_id': selected_folder,
+                'model': selected_model,
+                'epochs': int(epochs),
+                'batch_size': int(batch_size)
+            }
+
+            response = requests.post(endpoint_train, json=payload, headers=headers)
+            if response.status_code == 202:
+                context['output'] = response.json()
+                context['success'] = 'Model training started successfully.'
+            else:
+                context['error'] = f'Error: {response.status_code} - {response.text}'
+
+        except requests.RequestException as e:
+            context['error'] = f'Error connecting to the Flask API: {str(e)}'
+
+    return render(request, 'model_training.html', context)
 
 @login_required
 def predict_view(request):

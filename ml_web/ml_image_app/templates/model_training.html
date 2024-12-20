@@ -1,4 +1,291 @@
 {% extends 'base.html' %}
+
+{% block title %}Model Training{% endblock %}
+
 {% block content %}
-    <h2>Model Training</h2>
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Train New Model</h2>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        {{ success }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Training Form Column -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label for="project_name" class="form-label">Project Name*</label>
+                            <input type="text" class="form-control" id="project_name" name="project_name" required>
+                            <div class="invalid-feedback">
+                                Please provide a project name.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="folder" class="form-label">Select Folder*</label>
+                            <select class="form-select" id="folder" name="folder" required>
+                                <option value="">Choose a folder...</option>
+                                {% for folder in folders %}
+                                <option value="{{ folder.folder_id }}" data-image-count="{{ folder.image_count }}">
+                                    {{ folder.folder_name }} ({{ folder.image_count }} images)
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="invalid-feedback">
+                                Please select a folder.
+                            </div>
+                            <small class="text-muted">Minimum 5 images required for training</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="model" class="form-label">Select Model*</label>
+                            <select class="form-select" id="model" name="model" required>
+                                <option value="">Choose a model...</option>
+                                {% for model in models %}
+                                <option value="{{ model }}">{{ model }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="invalid-feedback">
+                                Please select a model.
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="epochs" class="form-label">Number of Epochs*</label>
+                                    <input type="number" class="form-control" id="epochs" name="epochs" 
+                                           min="1" max="100" value="10" required>
+                                    <div class="invalid-feedback">
+                                        Please enter a number between 1 and 100.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="batch_size" class="form-label">Batch Size*</label>
+                                    <input type="number" class="form-control" id="batch_size" name="batch_size" 
+                                           min="1" max="32" value="4" required>
+                                    <div class="invalid-feedback">
+                                        Please enter a number between 1 and 32.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" id="trainButton">
+                                Start Training
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if output %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    Training Status
+                </div>
+                <div class="card-body">
+                    <div id="trainingProgress" class="progress mb-3" style="height: 20px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <pre id="trainingLogs" class="bg-light p-3" style="max-height: 300px; overflow-y: auto;">
+Initializing training...
+                    </pre>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Trained Models Column -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Trained Models</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshModelsList()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="modelsList">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Project Name</th>
+                                        <th>Created</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modelsTableBody">
+                                    <!-- Models will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Form validation
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms).forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                }
+                form.classList.add('was-validated')
+            }, false)
+        })
+    })()
+
+    // Folder validation
+    document.getElementById('folder').addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const imageCount = selectedOption.getAttribute('data-image-count');
+        const trainButton = document.getElementById('trainButton');
+        
+        if (imageCount < 5) {
+            this.setCustomValidity('Selected folder must have at least 5 images');
+            trainButton.disabled = true;
+        } else {
+            this.setCustomValidity('');
+            trainButton.disabled = false;
+        }
+    });
+
+    // Trained Models List Management
+    const authToken = "{{ auth_token }}";
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    }
+
+    function refreshModelsList() {
+        fetch('http://127.0.0.1:5000/trained-models', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        })
+        .then(response => response.json())
+        .then(models => {
+            const tbody = document.getElementById('modelsTableBody');
+            tbody.innerHTML = '';
+            
+            models.forEach(model => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${model.project_name}</td>
+                    <td>${formatDate(model.created_at)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="downloadModel('${model.model_id}', '${model.project_name}')">
+                            <i class="bi bi-download"></i> Download
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching models:', error);
+        });
+    }
+
+    function downloadModel(modelId, projectName) {
+        fetch(`http://127.0.0.1:5000/download-model/${modelId}`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${projectName}.pt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        })
+        .catch(error => {
+            console.error('Error downloading model:', error);
+            alert('Error downloading model. Please try again.');
+        });
+    }
+
+    // Load models list on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshModelsList();
+    });
+
+    {% if output %}
+    // Training progress monitoring
+    const trainingJobId = "{{ output.training_job_id }}";
+    
+    function updateTrainingStatus() {
+        fetch(`http://127.0.0.1:5000/training-logs/${trainingJobId}`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update progress bar
+            const progressBar = document.querySelector('.progress-bar');
+            progressBar.style.width = `${data.progress}%`;
+            progressBar.textContent = `${data.progress}%`;
+
+            // Update logs
+            const logsElement = document.getElementById('trainingLogs');
+            logsElement.textContent = data.logs.join('\n');
+            logsElement.scrollTop = logsElement.scrollHeight;
+
+            // Continue polling if training is not complete
+            if (data.status !== 'completed' && data.status !== 'failed') {
+                setTimeout(updateTrainingStatus, 5000);
+            } else if (data.status === 'completed') {
+                refreshModelsList(); // Refresh the models list when training completes
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching training status:', error);
+        });
+    }
+
+    // Start monitoring progress
+    updateTrainingStatus();
+    {% endif %}
+</script>
 {% endblock %}

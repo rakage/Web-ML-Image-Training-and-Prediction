@@ -1137,7 +1137,7 @@ def save_bboxes():
 #         "training_job_id": training_job_id
 #     }), 202
     
-def prepare_yolo_dataset(folder, user_id, folder_id):
+def prepare_yolo_dataset(folder, user_id, folder_id, training_job_id):
     # Base directory for the user's model
     base_train_dir = f'D:/Pribadi/Sidehustle/p24_v2/backend_flask/user_models/{user_id}/{folder_id}'
     os.makedirs(base_train_dir, exist_ok=True)
@@ -1252,6 +1252,16 @@ def prepare_yolo_dataset(folder, user_id, folder_id):
                     label_file.write(f"{class_index} {center_x} {center_y} {w} {h}\n")
 
             prepared_images.append(image_path)
+
+    # Update progress in DB
+    mongo.db.training_jobs.update_one(
+        {'training_job_id': training_job_id},
+        {'$set': {
+            'status': 'prepared',
+            'progress': 25,
+            'updated_at': datetime.datetime.utcnow()
+        }}
+    )
     
     return base_train_dir, dataset_yaml_path
 
@@ -1594,6 +1604,18 @@ def start_training():
     if len(folder.get('image_list', [])) < 5:
         return jsonify({"msg": "Not enough images to start training. Minimum 5 images required."}), 400
     
+    # Check if the folder has bounding boxes minimum 40 bounding boxes required
+    bbox_counter = 0
+    for image_id in folder.get('image_list', []):
+        bbox_data = mongo.db.bboxes.find_one({'image_id': image_id})
+        if bbox_data:
+            bbox_counter += 1
+            if bbox_counter >= 40:
+                break
+
+    if bbox_counter < 40:
+        return jsonify({"msg": "Not enough bounding boxes to start training. Minimum 40 bounding boxes required."}), 400
+    
     # Generate training job ID
     training_job_id = str(uuid.uuid4())
 
@@ -1611,7 +1633,7 @@ def start_training():
     mongo.db.training_jobs.insert_one(training_record)
 
     # Prepare dataset
-    base_train_dir, dataset_yaml_path = prepare_yolo_dataset(folder, current_user_id, folder_id)
+    base_train_dir, dataset_yaml_path = prepare_yolo_dataset(folder, current_user_id, folder_id, training_job_id)
 
     # Start background task
     task = train_model.delay(
@@ -1704,6 +1726,26 @@ def get_training_job(job_id):
 
     return jsonify(job), 200
 
+@app.route('/trained-models', methods=['GET'])
+@jwt_required()
+def get_trained_models():
+    current_user_id = get_jwt_identity()
+
+    # Find all trained models for the current user
+    models = mongo.db.trained_models.find({'user_id': current_user_id})
+    
+    model_list = []
+    for model in models:
+        model_data = {
+            'model_id': str(model['_id']),
+            'fs_id': str(model['fs_id']),
+            'project_name': model['project_name'],
+            'created_at': model['created_at']
+        }
+        model_list.append(model_data)
+    
+    return jsonify(model_list), 200
+
 @app.route('/download-model/<model_id>', methods=['GET'])
 @jwt_required()
 def download_model(model_id):
@@ -1715,7 +1757,7 @@ def download_model(model_id):
         return jsonify({"msg": "Model not found"}), 404
 
     # Get the model file from GridFS
-    model_file = fs.get(ObjectId(model['model_path']))
+    model_file = fs.get(ObjectId(model['fs_id']))
 
     # Return the model file as a response
     return Response(model_file, content_type='application/octet-stream')
