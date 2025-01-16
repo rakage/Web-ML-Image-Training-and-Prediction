@@ -4,8 +4,37 @@
 
 {% block content %}
 <div class="container mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold mb-8 text-center">Your Folders</h1>
+  <div class="d-flex justify-content-between align-items-center mb-8">
+    <h1 class="text-3xl font-bold text-center">Your Folders</h1>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createFolderModal">
+      Create New Folder
+    </button>
+  </div>
   
+  <!-- Create Folder Modal -->
+  <div class="modal fade" id="createFolderModal" tabindex="-1" aria-labelledby="createFolderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createFolderModalLabel">Create New Folder</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="createFolderForm">
+            <div class="mb-3">
+              <label for="folderName" class="form-label">Folder Name</label>
+              <input type="text" class="form-control" id="folderName" name="folderName" required>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" onclick="createFolder()">Create Folder</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Folder List -->
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for folder in folders %}
@@ -26,4 +55,46 @@
     </div>
   {% endif %}
 </div>
+
+<!-- Add this script section at the end of your template -->
+{% block extra_js %}
+<script>
+function createFolder() {
+    const folderName = document.getElementById('folderName').value;
+    if (!folderName) {
+        alert('Please enter a folder name');
+        return;
+    }
+
+    fetch('http://127.0.0.1:5000/create-folder', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer {{ auth_token }}'
+        },
+        body: JSON.stringify({
+            folder_name: folderName
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Close the modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createFolderModal'));
+        modal.hide();
+        
+        // Refresh the page to show the new folder
+        window.location.reload();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error creating folder. Please try again.');
+    });
+}
+</script>
+{% endblock %}
 {% endblock %}
